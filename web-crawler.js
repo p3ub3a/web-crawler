@@ -5,7 +5,6 @@ const MAX_HOST_PARALLEL_REQUESTS = 4;
 const MAX_URL_LENGTH = 2048;
 
 var urls = ["https://iclp.imfast.io/"];
-// var urls = ["https://fmi.unibuc.ro/"];
 var urlsToVisit = [];
 var visitedUrls = [];
 
@@ -63,7 +62,7 @@ async function getContent(url, attemptsNr){
 
 
 async function parseHtml(html, domain) {
-    // foundUrls used just for logging purposes
+    // foundUrls can be used for logging purposes
     var foundUrls = [];
 
     // finds hrefs inside the page source
