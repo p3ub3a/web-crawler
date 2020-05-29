@@ -1,52 +1,52 @@
 const fetch = require('node-fetch');
+const fs = require('fs');
 var requests = [];
-const PAGE_REFRESH_ATTEMPTS = 3;
+const PAGE_RETRY_ATTEMPTS = 3;
 const MAX_REQUEST_NR = 20;
-const HOST_REFRESH_ATTEMPTS = 4;
+const HOST_RETRY_ATTEMPTS = 4;
+const MAX_URL_LENGTH = 2048;
 
-var urls = ["https://iclp.imfast.io/"];
+var urls = ["http://iclp.imfast.io/"];
+var urlsToVisit = [];
 var visitedUrls = [];
-var reSearch;
-var re = /<.*?href="(.*?\.html)/g;
-var domaineRE = /^(?:https?:\/\/)?(?:[^@\/\n]+@)?(?:www\.)?([^:\/?\n]+)/g;
 
-start();
+crawl();
 
-async function start(){
-    var urlsToVisit;
-    if(urls.length > 20){
+async function crawl(){
+    if(urls.length <= MAX_REQUEST_NR){
         urlsToVisit = urls;
     }else{
-        urlsToVisit = urls.slice(0,19);
+        urlsToVisit = urls.slice(0,20);
     }
-    await Promise.all(urls.map(async (urlsToVisit)=>{
+    console.log("\x1b[36mTrying to visit " + urlsToVisit.length + " URLs...\x1b[0m");
+    await Promise.all(urlsToVisit.map(async (item)=>{
         try{
+            // gets the domain name
+            var domaineRE = /^((?:https?:\/\/)?(?:[^@\/\n]+@)?(?:www\.)?[^:\/?\n]+)/g;
+
             if(!visitedUrls.includes(item)){
-                var content = await getContent(item);
                 var domain = domaineRE.exec(item);
-                // console.log(domain[1]);
+                var content = await getContent(item);
                 var found = await parseHtml(content, domain[1]);
-                Promise.all(content, found);
 
                 console.log("On node \x1b[4m\x1b[1m\x1b[32m" + item + "\x1b[0m found: \x1b[32m" + found + "\x1b[0m");
                 visitedUrls.push(item);
                 urls.splice(urls.indexOf(item), 1);
-                console.log('executed');
             }
         }catch(err){
-            // console.warn('Something went wrong.', err);
+            console.warn("\x1b[31mSomething went wrong:\x1b[0m", err);
         }
     }));
-
-    console.log("ajunge");
-    // start();
+    
+    console.log("\x1b[36mVisited a total of " + visitedUrls.length + " URLs.\x1b[0m");
+    crawl();
 }
 
 async function getContent(url){
     content = fetch(url)
         .then(response => response.text())
         .catch(function (err) {
-            console.warn('Something went wrong.', err);
+            console.warn('\x1b[31mSomething went wrong:\x1b[0m', err);
         });
     return content;
 }
@@ -54,23 +54,33 @@ async function getContent(url){
 
 async function parseHtml(html, domain) {
     var foundUrls = [];
+
+    // finds hrefs inside the page source
+    // var re = /<.*?href="(.*?\.html)/g;
+    var re = /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/g;
+    var reSearch;
     do {
         reSearch = re.exec(html);
         if (reSearch) {
-            pushUrl(foundUrls, domain, reSearch[1],);
-            if(!urls.includes(reSearch[1])){
-                pushUrl(urls, domain, reSearch[1]);
-            }
+            pushUrl(foundUrls, domain, reSearch[2],);
+            pushUrl(urls, domain, reSearch[2]);
         }
     } while (reSearch);
     return foundUrls;
 }
 
 function pushUrl(urlArray, domain, path ) {
+    var urlToBePushed;
     if (path.startsWith("http")) {
-        urlArray.push(path);
+        urlToBePushed = path;
+        if(!urlArray.includes(urlToBePushed) && urlToBePushed.length < MAX_URL_LENGTH){
+            urlArray.push(path);
+        }
     }
     else {
-        urlArray.push(domain + "/" + path);
+        urlToBePushed = domain + "/" + path;
+        if(!urlArray.includes(urlToBePushed) && urlToBePushed.length < MAX_URL_LENGTH){
+            urlArray.push(domain + "/" + path);
+        }
     }
 }
