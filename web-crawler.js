@@ -1,58 +1,69 @@
 const fetch = require('node-fetch');
-const fs = require('fs');
-var requests = [];
 const PAGE_RETRY_ATTEMPTS = 3;
-const MAX_REQUEST_NR = 20;
-const HOST_RETRY_ATTEMPTS = 4;
+const MAX_PARALLEL_REQUESTS = 20;
+const MAX_HOST_PARALLEL_REQUESTS = 4;
 const MAX_URL_LENGTH = 2048;
 
-var urls = ["http://iclp.imfast.io/"];
+var urls = ["https://iclp.imfast.io/"];
+// var urls = ["https://fmi.unibuc.ro/"];
 var urlsToVisit = [];
 var visitedUrls = [];
+
+var options = {
+    follow: 2,
+    timeout: 5000
+}
 
 crawl();
 
 async function crawl(){
-    if(urls.length <= MAX_REQUEST_NR){
+    if(urls.length <= MAX_PARALLEL_REQUESTS){
         urlsToVisit = urls;
     }else{
-        urlsToVisit = urls.slice(0,20);
+        urlsToVisit = urls.slice(0, MAX_PARALLEL_REQUESTS);
     }
+    console.log("\x1b[36mThere are " + urls.length + " URLs left to visit...\x1b[0m");
     console.log("\x1b[36mTrying to visit " + urlsToVisit.length + " URLs...\x1b[0m");
     await Promise.all(urlsToVisit.map(async (item)=>{
         try{
-            // gets the domain name
-            var domaineRE = /^((?:https?:\/\/)?(?:[^@\/\n]+@)?(?:www\.)?[^:\/?\n]+)/g;
-
             if(!visitedUrls.includes(item)){
-                var domain = domaineRE.exec(item);
-                var content = await getContent(item);
+                var domain = getDomain(item);
+                var content = await getContent(item, PAGE_RETRY_ATTEMPTS);
                 var found = await parseHtml(content, domain[1]);
-
-                console.log("On node \x1b[4m\x1b[1m\x1b[32m" + item + "\x1b[0m found: \x1b[32m" + found + "\x1b[0m");
-                visitedUrls.push(item);
-                urls.splice(urls.indexOf(item), 1);
+                // console.log("On node \x1b[4m\x1b[1m\x1b[32m" + item + "\x1b[0m found: \x1b[32m" + found + "\x1b[0m");
+                updateUrls(item);
             }
         }catch(err){
             console.warn("\x1b[31mSomething went wrong:\x1b[0m", err);
         }
     }));
+     
+    if(urls.length > 0){
+        console.log("\x1b[36mVisited a total of " + visitedUrls.length + " URLs.\x1b[0m");
+        crawl();
+    } else{
+        console.log("\x1b[36mVisited a total of " + visitedUrls.length + " URLs.\x1b[0m");
+    }
     
-    console.log("\x1b[36mVisited a total of " + visitedUrls.length + " URLs.\x1b[0m");
-    crawl();
 }
 
-async function getContent(url){
-    content = fetch(url)
-        .then(response => response.text())
-        .catch(function (err) {
-            console.warn('\x1b[31mSomething went wrong:\x1b[0m', err);
-        });
-    return content;
+async function getContent(url, attemptsNr){
+    return fetch(url,options)
+    .then(response => response.text())
+    .catch((err) => {
+        if(attemptsNr !== 0){
+            var nr = PAGE_RETRY_ATTEMPTS - attemptsNr + 1;
+            console.warn("\x1b[31mRetrying request (attempt nr:" + nr + ") for: "+ url + "\x1b[0m");
+            getContent(url, attemptsNr - 1);
+        }else{
+            updateUrls(url);
+        }
+    });
 }
 
 
 async function parseHtml(html, domain) {
+    // foundUrls used just for logging purposes
     var foundUrls = [];
 
     // finds hrefs inside the page source
@@ -62,7 +73,7 @@ async function parseHtml(html, domain) {
     do {
         reSearch = re.exec(html);
         if (reSearch) {
-            pushUrl(foundUrls, domain, reSearch[2],);
+            pushUrl(foundUrls, domain, reSearch[2]);
             pushUrl(urls, domain, reSearch[2]);
         }
     } while (reSearch);
@@ -73,14 +84,24 @@ function pushUrl(urlArray, domain, path ) {
     var urlToBePushed;
     if (path.startsWith("http")) {
         urlToBePushed = path;
-        if(!urlArray.includes(urlToBePushed) && urlToBePushed.length < MAX_URL_LENGTH){
-            urlArray.push(path);
+        if(!urlArray.includes(urlToBePushed) && urlToBePushed.length < MAX_URL_LENGTH && !visitedUrls.includes(urlToBePushed)){
+            urlArray.push(urlToBePushed);
         }
     }
     else {
         urlToBePushed = domain + "/" + path;
-        if(!urlArray.includes(urlToBePushed) && urlToBePushed.length < MAX_URL_LENGTH){
-            urlArray.push(domain + "/" + path);
+        if(!urlArray.includes(urlToBePushed) && urlToBePushed.length < MAX_URL_LENGTH && !visitedUrls.includes(urlToBePushed)){
+            urlArray.push(urlToBePushed);
         }
     }
+}
+
+function updateUrls(url){
+    visitedUrls.push(url);
+    urls.splice(urls.indexOf(url), 1);
+}
+
+function getDomain(url){
+    var domaineRE = /^((?:https?:\/\/)?(?:[^@\/\n]+@)?(?:www\.)?[^:\/?\n]+)/g;
+    return domaineRE.exec(url);
 }
