@@ -6,4 +6,6 @@ If a link is not responding, it will try fetching the resource 3 times until mar
 
 **MAX_PARALLEL_REQUESTS** (default 20) requests can be made in parallel.
 
-**MAX_HOST_PARALLEL_REQUESTS** (default 4) requests on the same host can be made in parallel
+**MAX_HOST_PARALLEL_REQUESTS** (default 4) requests on the same host can be made in parallel.
+
+*happy crawling*
